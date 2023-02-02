@@ -46,7 +46,7 @@ resource "random_password" "name" {
   length = 8
 }
 
-resource "azurerm_virtual_machine" "main" {
+resource "azurerm_virtual_machine" "azureVM" {
   name                  = "${resourceGroupName}-vm"
   location              = azurerm_resource_group.resourceGroup.location
   resource_group_name   = azurerm_resource_group.resourceGroup.name
@@ -80,4 +80,40 @@ resource "azurerm_virtual_machine" "main" {
   tags = {
     environment = "staging"
   }
+}
+
+resource "azurerm_monitor_action_group" "emailAlert" {
+  name                = "emailAlert"
+  resource_group_name = azurerm_resource_group.resourceGroup.name
+  short_name          = "email"
+}
+
+ email_receiver {
+    name          = "sendtoadmin"
+    email_address = email_address
+    use_common_alert_schema = true
+  }
+
+  resource "azurerm_monitor_metric_alert" "cpuThresholdAlert" {
+  name                = "cpuThresholdAlert"
+  resource_group_name = azurerm_resource_group.resourceGroup.name
+  scopes              = [azurerm_virtual_machine.azureVM.id]
+  description         = "Action will be triggered when CPU Threshold is greater than 70."
+
+  criteria {
+    metric_namespace = "Microsoft.Compute/virtualMachines"
+    metric_name      = "Percentage CPU"
+    aggregation      = "Total"
+    operator         = "GreaterThan"
+    threshold        = 70
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.emailAlert.id
+
+  }
+  depends_on = [
+    azurerm_monitor_metric_alert.cpuThresholdAlert,
+    azurerm_virtual_machine.azureVM
+  ]
 }
