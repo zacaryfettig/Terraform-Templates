@@ -7,7 +7,7 @@ Virtual Machine
 
 VNet: network communication between resources
 
-Public IP
+Public IP: public IP for virtual machine
 
 nic: vm network interface
 
