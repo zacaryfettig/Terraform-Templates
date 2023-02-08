@@ -3,73 +3,70 @@ resource "azurerm_resource_group" "resourceGroup" {
   location = var.location
 }
 
-
 resource "azurerm_private_dns_zone" "dnsPrivateZone" {
   name                = "privatelink.azurewebsites.net"
-  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_name = azurerm_resource_group.resourceGroup.name
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "dnszonelink" {
   name = "dnszonelink"
-  resource_group_name = azurerm_resource_group.rg.name
-  private_dns_zone_name = azurerm_private_dns_zone.dnsprivatezone.name
+  resource_group_name = azurerm_resource_group.resourceGroup.name
   virtual_network_id = azurerm_virtual_network.vnet.id
+  private_dns_zone_name = azurerm_private_dns_zone.dnsPrivateZone.name
 }
 
 resource "azurerm_private_endpoint" "privateEndpoint" {
   name                = "privateEndpoint"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-  subnet_id           = azurerm_subnet.endpointsubnet.id
+  location            = azurerm_resource_group.resourceGroup.location
+  resource_group_name = azurerm_resource_group.resourceGroup.name
+  subnet_id           = azurerm_subnet.subnet2.id
 
   private_dns_zone_group {
     name = "privateDnsZoneGroup"
-    private_dns_zone_ids = [azurerm_private_dns_zone.dnsprivatezone.id]
+    private_dns_zone_ids = [azurerm_private_dns_zone.dnsPrivateZone.id]
   }
 
   private_service_connection {
     name = "privateEndpointConnection"
-    private_connection_resource_id = azurerm_windows_web_app.backwebapp.id
-    subresource_names = ["sites"]
+    private_connection_resource_id = azurerm_mssql_database.sqlDB.id
     is_manual_connection = false
   }
 }
 
-
-resource "azurerm_network_security_group" "example" {
-  name                = "example-security-group"
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
+resource "azurerm_network_security_group" "nsg" {
+  name                = "nsg"
+  location            = azurerm_resource_group.resourceGroup.location
+  resource_group_name = azurerm_resource_group.resourceGroup.name
 }
 
-resource "azurerm_virtual_network" "example" {
-  name                = "example-network"
-  location            = azurerm_resource_group.example.location
-  resource_group_name = azurerm_resource_group.example.name
+resource "azurerm_virtual_network" "vnet" {
+  name                = "vnet"
+  location            = azurerm_resource_group.resourceGroup.location
+  resource_group_name = azurerm_resource_group.resourceGroup.name
   address_space       = ["10.0.0.0/16"]
-  dns_servers         = ["10.0.0.4", "10.0.0.5"]
+}
 
-  subnet {
-    name           = "delagationSubnet"
-    address_prefix = "10.0.1.0/24"
-    delegation {
+resource "azurerm_subnet" "delegationSubnet" {
+  name                 = "delagationSubnet"
+  resource_group_name  = azurerm_resource_group.resourceGroup.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
+
+  delegation {
     name = "delegation"
 
     service_delegation {
-      name    = Microsoft.Microsoft.Web/serverFarms
+      name = "Microsoft.Web/serverFarms"
     }
-  }
-  }
-
-  subnet {
-    name           = "subnet2"
-    address_prefix = "10.0.2.0/24"
-    security_group = azurerm_network_security_group.example.id
   }
 }
 
-
-
+resource "azurerm_subnet" "subnet2" {
+  name                 = "subnet2"
+  resource_group_name  = azurerm_resource_group.resourceGroup.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
 
 
 //App Service
@@ -83,26 +80,25 @@ resource "azurerm_service_plan" "appServicePlan" {
 }
 
 resource "azurerm_windows_web_app" "appService" {
-  name                = "azurerm_resource_group.resourceGroup.name}-appService"
+  name                = "${azurerm_resource_group.resourceGroup.name}-appService"
   resource_group_name = azurerm_resource_group.resourceGroup.name
   location            = azurerm_resource_group.resourceGroup.location
-  service_plan_id     = azurerm_app_service_plan.appServicePlan.id
+  service_plan_id     = azurerm_service_plan.appServicePlan.id
 
 site_config {
 always_on = true
-
-    dotnet_framework_version = "v4.0"
   }
 }
 
 //SQL
 resource "azurerm_mssql_server" "sqlServer" {
-  name                         = "sqlServer"
+  name                         = "sqlserve48337"
   resource_group_name          = azurerm_resource_group.resourceGroup.name
   location                     = azurerm_resource_group.resourceGroup.location
   version                      = "12.0"
   administrator_login          = "4dm1n157r470r"
-  administrator_login_password = sqlPassword
+  administrator_login_password = "sqlPassword14*"
+  public_network_access_enabled = false
 }
 
 resource "azurerm_mssql_database" "sqlDB" {
@@ -122,25 +118,17 @@ resource "azurerm_mssql_database" "sqlDB" {
 
 resource "azurerm_mssql_firewall_rule" "example" {
   name             = "FirewallRule1"
-  server_id        = azurerm_mssql_server.example.id
-  start_ip_address = "10.0.17.62"
-  end_ip_address   = "10.0.17.62"
+  server_id        = azurerm_mssql_server.sqlServer.id
+  start_ip_address = "10.0.2.1"
+  end_ip_address   = "10.0.2.254"
 }
 
-provider "azurerm" {
-  features {
-    key_vault {
-      purge_soft_delete_on_destroy    = true
-      recover_soft_deleted_key_vaults = true
-    }
-  }
-}
 
 data "azurerm_client_config" "current" {}
 
 
 resource "azurerm_key_vault" "keyVault" {
-  name                        = "keyVault"
+  name                        = "keyVaul1239"
   location                    = azurerm_resource_group.resourceGroup.location
   resource_group_name         = azurerm_resource_group.resourceGroup.name
   enabled_for_disk_encryption = true
@@ -160,17 +148,15 @@ resource "azurerm_key_vault" "keyVault" {
 
     secret_permissions = [
       "Get",
+      "List",
     ]
 
-    storage_permissions = [
-      "Get",
-    ]
   }
 }
 
 resource "azurerm_key_vault_secret" "vaultSecret" {
   name         = "sqlPassword"
-  value        = sqlPassword
+  value        = var.sqlPassword
   key_vault_id = azurerm_key_vault.keyVault.id
   depends_on = [
     azurerm_key_vault.keyVault
