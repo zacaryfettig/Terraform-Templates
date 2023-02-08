@@ -1,8 +1,10 @@
+//creating Resource Group
 resource "azurerm_resource_group" "resourceGroup" {
   name     = var.resourceGroupName
   location = var.location
 }
 
+//dns resources & private endpoint
 resource "azurerm_private_dns_zone" "dnsPrivateZone" {
   name                = "privatelink.azurewebsites.net"
   resource_group_name = azurerm_resource_group.resourceGroup.name
@@ -19,7 +21,7 @@ resource "azurerm_private_endpoint" "privateEndpoint" {
   name                = "privateEndpoint"
   location            = azurerm_resource_group.resourceGroup.location
   resource_group_name = azurerm_resource_group.resourceGroup.name
-  subnet_id           = azurerm_subnet.subnet2.id
+  subnet_id           = azurerm_subnet.sqlSubnet.id
 
   private_dns_zone_group {
     name = "privateDnsZoneGroup"
@@ -33,6 +35,7 @@ resource "azurerm_private_endpoint" "privateEndpoint" {
   }
 }
 
+//networking resources
 resource "azurerm_network_security_group" "nsg" {
   name                = "nsg"
   location            = azurerm_resource_group.resourceGroup.location
@@ -61,16 +64,15 @@ resource "azurerm_subnet" "delegationSubnet" {
   }
 }
 
-resource "azurerm_subnet" "subnet2" {
-  name                 = "subnet2"
+resource "azurerm_subnet" "sqlSubnet" {
+  name                 = "sqlSubnet"
   resource_group_name  = azurerm_resource_group.resourceGroup.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.2.0/24"]
 }
 
 
-//App Service
-
+//App Service resources
 resource "azurerm_service_plan" "appServicePlan" {
   name                = "${azurerm_resource_group.resourceGroup.name}-appPlan"
   resource_group_name = azurerm_resource_group.resourceGroup.name
@@ -90,15 +92,22 @@ always_on = true
   }
 }
 
-//SQL
+//SQL resources
 resource "azurerm_mssql_server" "sqlServer" {
-  name                         = "sqlserve48337"
+  name                         = "sqlserver-${azurerm_resource_group.resourceGroup.id}"
   resource_group_name          = azurerm_resource_group.resourceGroup.name
   location                     = azurerm_resource_group.resourceGroup.location
   version                      = "12.0"
-  administrator_login          = "4dm1n157r470r"
-  administrator_login_password = "sqlPassword14*"
+  administrator_login          = sqlUsername
+  administrator_login_password = azurerm_key_vault_secret.vaultSecret.value
   public_network_access_enabled = false
+  
+  depends_on = [
+    azurerm_key_vault.keyVault,
+    var.sqlUsername,
+    var.sqlPassword,
+
+  ]
 }
 
 resource "azurerm_mssql_database" "sqlDB" {
@@ -112,7 +121,7 @@ resource "azurerm_mssql_database" "sqlDB" {
   zone_redundant = true
 
   depends_on = [
-    azurerm_mssql_server.sqlServer
+    azurerm_mssql_server.sqlServer,
   ]
 }
 
@@ -121,11 +130,15 @@ resource "azurerm_mssql_firewall_rule" "example" {
   server_id        = azurerm_mssql_server.sqlServer.id
   start_ip_address = "10.0.2.1"
   end_ip_address   = "10.0.2.254"
+
+  depends_on = [
+    azurerm_mssql_server.sqlServer,
+    azurerm_mssql_database,
+  ]
 }
 
-
+//keyvautl resources
 data "azurerm_client_config" "current" {}
-
 
 resource "azurerm_key_vault" "keyVault" {
   name                        = "keyVaul1239"
