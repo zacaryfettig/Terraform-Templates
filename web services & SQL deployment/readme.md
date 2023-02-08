@@ -1,4 +1,4 @@
-# Deploying infrastructure for a web app with SQL based Database using Terraform - in progress
+# Deploying infrastructure for a web app with SQL based Database using Terraform
 Template objective is hosting a .net web app with SQL database while maintaining connection security from the SQL Database to the web app.
 
 ## Resources created in Template
