@@ -77,7 +77,7 @@ resource "azurerm_service_plan" "appServicePlan" {
   name                = "${azurerm_resource_group.resourceGroup.name}-appPlan"
   resource_group_name = azurerm_resource_group.resourceGroup.name
   location            = azurerm_resource_group.resourceGroup.location
-  sku_name            = "P1v2"
+  sku_name            = var.appPlanTier
   os_type             = "Windows"
 }
 
@@ -125,7 +125,7 @@ resource "azurerm_mssql_database" "sqlDB" {
   ]
 }
 
-resource "azurerm_mssql_firewall_rule" "example" {
+resource "azurerm_mssql_firewall_rule" "sqlFirewallRule" {
   name             = "FirewallRule1"
   server_id        = azurerm_mssql_server.sqlServer.id
   start_ip_address = "10.0.2.1"

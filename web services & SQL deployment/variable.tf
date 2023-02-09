@@ -13,3 +13,7 @@ variable "sqlUsername" {
 variable "sqlPassword" {
   type = string
 }
+
+variable "appPlanTier" {
+  
+}
