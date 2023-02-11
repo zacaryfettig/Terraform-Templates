@@ -4,7 +4,7 @@ resource "azurerm_resource_group" "resourceGroup" {
 }
 
 resource "azurerm_network_security_group" "nsg" {
-  name                = "example-security-group"
+  name                = "nsg"
   location            = azurerm_resource_group.resourceGroup.location
   resource_group_name = azurerm_resource_group.resourceGroup.name
 }
@@ -51,23 +51,23 @@ resource "azurerm_windows_virtual_machine" "azureVM" {
   name                = "${var.resourceGroupName}-vm"
   location              = azurerm_resource_group.resourceGroup.location
   resource_group_name   = azurerm_resource_group.resourceGroup.name
-  size                = "Standard_F4s_v2"
-  admin_username      = "adminuser"
-  admin_password      = "password12!@"
+  size                = var.vmSize
+  admin_username      = var.vmUsername
+  admin_password      = var.vmPassword
   network_interface_ids = [
     azurerm_network_interface.nic.id,
   ]
 
   os_disk {
     caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
+    storage_account_type = var.storageAccountType
   }
 
   source_image_reference {
-    publisher = "MicrosoftWindowsServer"
-    offer     = "WindowsServer"
-    sku       = "2019-Datacenter"
-    version   = "latest"
+    publisher = var.publisher
+    offer     = var.offer
+    sku       = var.sku
+    version   = var.version
   }
 }
 
@@ -92,11 +92,11 @@ resource "azurerm_monitor_action_group" "emailAlert" {
   description         = "Action will be triggered when CPU Threshold is greater than 70."
 
   criteria {
-    metric_namespace = "Microsoft.Compute/virtualMachines"
-    metric_name      = "Percentage CPU"
-    aggregation      = "Total"
-    operator         = "GreaterThan"
-    threshold        = 70
+    metric_namespace = var.metric_namespace
+    metric_name      = var.metric_name
+    aggregation      = var.aggregation
+    operator         = var.operator
+    threshold        = var.threshold
   }
 
   action {
@@ -106,5 +106,44 @@ resource "azurerm_monitor_action_group" "emailAlert" {
   depends_on = [
     azurerm_monitor_metric_alert.cpuThresholdAlert,
     azurerm_windows_virtual_machine.azureVM
+  ]
+}
+
+//keyvautl resources
+data "azurerm_client_config" "current" {}
+
+resource "azurerm_key_vault" "keyVault" {
+  name                        = "keyVault-${var.resourceGroupName.id}"
+  location                    = azurerm_resource_group.resourceGroup.location
+  resource_group_name         = azurerm_resource_group.resourceGroup.name
+  enabled_for_disk_encryption = true
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  soft_delete_retention_days  = 7
+  purge_protection_enabled    = false
+
+  sku_name = "standard"
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+
+    key_permissions = [
+      "Get",
+    ]
+
+    secret_permissions = [
+      "Get",
+      "List",
+    ]
+
+  }
+}
+
+resource "azurerm_key_vault_secret" "vaultSecret" {
+  name         = "sqlPassword"
+  value        = var.sqlPassword
+  key_vault_id = azurerm_key_vault.keyVault.id
+  depends_on = [
+    azurerm_key_vault.keyVault
   ]
 }
