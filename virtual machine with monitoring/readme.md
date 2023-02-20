@@ -1,4 +1,4 @@
-# Virtual Machine Scale Set
+# Virtual Machine with monitoring metrics
 Template objective is hosting a server application that has the ability to size up/down depending on the amount of users
 
 ## Resources created in Template
