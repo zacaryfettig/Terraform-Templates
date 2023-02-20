@@ -1,5 +1,5 @@
 # Virtual Machine with monitoring metrics
-Template objective is hosting a server application that has the ability to size up/down depending on the amount of users
+Template objective is hosting Template objective is monitoring for VM usage and sending alerts when usage is high
 
 ## Resources created in Template
 
