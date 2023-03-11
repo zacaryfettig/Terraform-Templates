@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "DocToPdfFunction": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7163",
+      "launchBrowser": false
+    }
+  }
+}
