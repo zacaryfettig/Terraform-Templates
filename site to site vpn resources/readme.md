@@ -1,20 +1,17 @@
-# Virtual Machine with monitoring metrics
-Template objective is hosting Template objective is monitoring for VM usage and sending alerts when usage is high
+# Site to Site VPN
+Template objective is creating a site to site vpn with Terraform
 
 ## Resources created in Template
 
-Virtual Machine
+vnet: Azure virtual network that the vpn will connect to
 
-VNet: network communication between resources
+public IP: Azure IP address that the local network gateway will connect to
 
-Public IP: public IP for virtual machine
+virtual network gateway: Azure gateway that the remote network (other side of the vpn) will connect to
 
-nic: vm network interface
+Local Network Gateway: Defining remote gateway address space
 
-action group: email alert action
-
-metric alert: alert based on set resource usage trigger
-
+Virtual Network Gateway Connection: connecting Virtual Network Gateway to Local Network Gateway
 
 ## Resource Deployment
 
