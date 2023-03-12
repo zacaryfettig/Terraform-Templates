@@ -10,4 +10,4 @@ Converts Microsoft Word Documents to PDF Files. Application is written in .Net c
 
 * Service Plan: Consumption service plan for function app
 
-* Windows Function App: Azure Function that runs/hosts the PDF converter code
+* Windows Function App: Azure Function that runs/hosts the PDF converter code.
