@@ -11,3 +11,11 @@ Converts Microsoft Word Documents to PDF Files. Application is written in .Net c
 * Service Plan: Consumption service plan for function app
 
 * Windows Function App: Azure Function that runs/hosts the PDF converter code.
+
+## How To Deploy For Yourself Using Github Actions
+
+* Fork Repository from the main repo in the link
+
+https://github.com/zacaryfettig/Document-Converter-Azure-Function
+
+* Set Azure credentials in .github/workflows/workflow.yml file
