@@ -19,4 +19,5 @@ Converts Microsoft Word Documents to PDF Files. Application is written in .Net c
 https://github.com/zacaryfettig/Document-Converter-Azure-Function
 
 * Follow instructions in Deployment Instructions document
+
 https://github.com/zacaryfettig/Terraform-Templates/blob/main/Document%20Converter%20Azure%20Function/Deployment%20Instructions
