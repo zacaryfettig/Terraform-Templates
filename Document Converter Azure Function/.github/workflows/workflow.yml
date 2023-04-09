@@ -1,49 +1,103 @@
-name: Test and Deploy (Functions Action)
+name: 'Deploy Terraform & App'
+on: workflow_dispatch
 
-on:
-  push:
-    branches: [ main ]
-    paths-ignore: 
-      - '**/README.md'
-      - '**/*.yml'
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-  
+
+permissions:
+  id-token: write
+  contents: read
+
 env:
-  AZURE_FUNCTIONAPP_NAME: dotnet5-test-app # set this to the name of your azure function app resource
-  AZURE_FUNCTION_PROJ_PATH: src/Sample.FunctionApp  # set this to the path to your function app project
-  ROOT_SOLUTION_PATH: src # set this to the root path of your solution/project file
+  AZURE_FUNCTIONAPP_NAME: 'functionappdocconverter5846'   # set this to your function app name on Azure
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './functionApplication/DocToPdfFunction'       # set this to the path to your function app project, defaults to the repository root
+  DOTNET_VERSION: '6.0.x'                   # set this to the dotnet version to use (e.g. '2.1.x', '3.1.x', '5.0.x')
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    
-    steps:    
-      - name: Get the latest source code commit
-        uses: actions/checkout@v2
+  build-and-deploy:
+    name: 'build-and-deploy'
+    runs-on: Windows-latest
+    environment: production
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # Checkout the repository to the GitHub Actions runner
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    # Install the latest version of Terraform CLI and configure the Terraform CLI configuration file with a Terraform Cloud user API token
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v1
+
+    - name: 'Az CLI login'
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+    - name: Terraform Init
+      id: init
+      env:
+        STORAGE_ACCOUNT: ${{ secrets.STORAGE_ACCOUNT }}
+        CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }}
+        RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+        ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        ARM_SUBCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      run: terraform init -backend-config="storage_account_name$STORAGE_ACCOUNT" -backend-config="container_name=$CONTAINER_NAME" -backend-config="resource_group_name=$RESOURCE_GROUP_NAME" -backend-config "arm_client_id=$AZURE_CLIENT_ID" -backend-config="arm_subscription_id=AZURE_SUBSCRIPTION_ID" -backend-config="arm_tenant_id=TENANT_ID"
+
+# Generates an execution plan for Terraform
+    - name: Terraform Plan
+      env:
+        STORAGE_ACCOUNT: ${{ secrets.STORAGE_ACCOUNT }}
+        CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }}
+        RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+        ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        ARM_SUBCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        TF_VAR_subscriptionID: ${{ secrets.AZURE_SUBSCRIPTION_ID}}
+        TF_VAR_tenantID: ${{ secrets.AZURE_TENANT_ID}}
+      run: terraform plan -input=false
+
+    - name: Terraform Apply
+      env:
+        STORAGE_ACCOUNT: ${{ secrets.STORAGE_ACCOUNT }}
+        CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }}
+        RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+        ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        ARM_SUBCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        TF_VAR_subscriptionID: ${{ secrets.AZURE_SUBSCRIPTION_ID}}
+        TF_VAR_tenantID: ${{ secrets.AZURE_TENANT_ID}}
+      run: terraform apply -auto-approve -input=false
+
         
-      - name: Restore dependencies
-        run: dotnet restore
-        working-directory: ${{ env.ROOT_SOLUTION_PATH }}
 
-      - name: Build for Testing
-        run: dotnet build --no-restore
-        working-directory: ${{ env.ROOT_SOLUTION_PATH }}
-      
-      - name: Build Function App for Release
-        run: dotnet build --configuration Release --output ./output
-        working-directory: ${{ env.AZURE_FUNCTION_PROJ_PATH }}
 
-      - name: 'Run Azure Functions Action'
-        uses: Azure/functions-action@v1
-        id: fa
-        with:
-          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-          package: '${{ env.AZURE_FUNCTION_PROJ_PATH }}/output'
-          publish-profile: ${{ secrets.AZURE_FUNCTION_PUBLISH_CREDS }}
+##Deploy Application        
+    - name: Restore Nuget packages
+      run: nuget restore './functionApplication/DocToPdfFunction/DocToPdfFunction.sln'
+
+
+    - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 'Resolve Project Dependencies Using Dotnet'
+      shell: pwsh
+      run: |
+        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+        dotnet build --configuration Release --output ./output
+        popd
+
+    - name: 'Run Azure Functions Action'
+      uses: Azure/functions-action@v1
+      id: fa
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
