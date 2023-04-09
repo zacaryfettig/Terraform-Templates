@@ -1,4 +1,4 @@
-# Word to PDF converter Azure Function - Build Out in Progress
+# Word to PDF converter Azure Function
 Creation of Function App Resources through Terraform and hosting of a PDF converter .Net core Application on top of the function. Github actions used to deploy Infrastructure and Application through the touch of a button in Github.
 
 ## .Net Core PDF Converter Application Description
