@@ -1,5 +1,5 @@
 # Connecting Sites and Resouces togeather using Azure Virtual Wan
-Template objective is to create a resource that easily manages
+Template objective is to create a resource that manages many network connections into Azure with a simple managment interface between regions utilizing Azure's backbone. 
 
 ## Resources created in Template
 * Virtual Wan: Connects Express route, site to site & point to site vpn's, virtual networks, and other resources in Azure while using one managment interface.
