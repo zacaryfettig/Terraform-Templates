@@ -14,8 +14,8 @@ resource "azurerm_container_group" "containerGroup" {
   subnet_ids = azurerm_subnet.subnetContainer.id
 
   container {
-    name   = "hello-world"
-    image  = "mcr.microsoft.com/azuredocs/aci-helloworld:latest"
+    name   = "sqlServer"
+    image  = "mcr.microsoft.com/mssql/server:2022-latest"
     cpu    = "0.5"
     memory = "2"
 
