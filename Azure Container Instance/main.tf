@@ -17,7 +17,7 @@ resource "azurerm_container_group" "containerGroup" {
     name   = "sqlServer"
     image  = "mcr.microsoft.com/mssql/server:2022-latest"
     cpu    = "0.5"
-    memory = "2"
+    memory = "4"
 
     ports {
       port     = 443
