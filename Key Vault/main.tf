@@ -4,10 +4,16 @@ resource "azurerm_resource_group" "resourceGroup" {
 }
 
 //keyvautl resources
+resource "random_string" "random" {
+  length = 6
+  special = false
+  upper = false
+}
+
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_key_vault" "keyVault" {
-  name                        = "keyVault-${var.resourceGroupName.id}"
+  name                        = "keyVault-${random_string.random.result}"
   location                    = azurerm_resource_group.resourceGroup.location
   resource_group_name         = azurerm_resource_group.resourceGroup.name
   enabled_for_disk_encryption = true
@@ -28,8 +34,8 @@ resource "azurerm_key_vault" "keyVault" {
     secret_permissions = [
       "Get",
       "List",
+      "Set",
     ]
-
   }
 }
 
