@@ -5,10 +5,11 @@ resource "azurerm_resource_group" "resourceGroup" {
   location = var.location
 }
 */
-/*
+
 resource "random_id" "front_door_endpoint_name" {
   byte_length = 8
 }
+
 
 
 locals {
@@ -17,8 +18,8 @@ locals {
 
 resource "azurerm_cdn_frontdoor_profile" "frontDoorProfile" {
   name                = "frontDoorProfile"
-  resource_group_name = azurerm_resource_group.resourceGroup.name
-  sku_name            = "Standard_AzureFrontDoor"
+  resource_group_name = "rg1"
+  sku_name            = "Premium_AzureFrontDoor"
 }
 
 resource "azurerm_cdn_frontdoor_endpoint" "my_endpoint" {
@@ -30,6 +31,8 @@ resource "azurerm_cdn_frontdoor_origin_group" "frontDoorOriginGroup1" {
   name                     = "frontDoorOrginGroup1"
   cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.frontDoorProfile.id
   session_affinity_enabled = true
+
+  
 
   load_balancing {
     sample_size                 = 4
@@ -44,19 +47,68 @@ resource "azurerm_cdn_frontdoor_origin_group" "frontDoorOriginGroup1" {
   }
 }
 
+resource "azurerm_cdn_frontdoor_route" "frontdoorRouteDefault" {
+  name                          = "frontdoorRouteDefault"
+  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.my_endpoint.id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.frontDoorOriginGroup1.id
+  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.westusServiceOrigin.id]
+  enabled                       = true
+
+  forwarding_protocol    = "MatchRequest"
+  https_redirect_enabled = false
+  patterns_to_match      = ["/*"]
+  supported_protocols    = ["Http", "Https"]
+
+  link_to_default_domain          = true
+
+  cache {
+    query_string_caching_behavior = "IgnoreSpecifiedQueryStrings"
+    query_strings                 = ["account", "settings"]
+    compression_enabled           = true
+    content_types_to_compress     = ["text/html", "text/javascript", "text/xml"]
+  }
+}
+
+
 resource "azurerm_cdn_frontdoor_origin" "westusServiceOrigin" {
   name                          = "westusServiceOrigin"
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.frontDoorOriginGroup1.id
 
   enabled                        = true
-  host_name                      = "database.com"
+  host_name                      = azurerm_container_group.containerGroup.ip_address
   http_port                      = 80
   https_port                     = 443
-  origin_host_header             = "database.com"
+  origin_host_header             = azurerm_container_group.containerGroup.ip_address
   priority                       = 1
   weight                         = 1000
   certificate_name_check_enabled = true
+  private_link {
+    location = "westus"
+    private_link_target_id = azurerm_container_group.containerGroup.id
+  }
 }
+
+/*
+resource "azurerm_private_link_service" "frontDoorPrivateLinkService" {
+  name                = "frontDoorPrivateLinkService"
+  resource_group_name = "rg1"
+  location            = "westus"
+
+  auto_approval_subscription_ids              = ["00000000-0000-0000-0000-000000000000"]
+  visibility_subscription_ids                 = ["00000000-0000-0000-0000-000000000000"]
+  load_balancer_frontend_ip_configuration_ids = [azurerm_lb.example.frontend_ip_configuration.0.id]
+
+  nat_ip_configuration {
+    name                       = "primary"
+    private_ip_address         = "10.0.1.5"
+    private_ip_address_version = "IPv4"
+    subnet_id                  = azurerm_subnet.subnetContainer.id
+    primary                    = true
+  }
+}
+*/
+
+
 
 //resource "azurerm_cdn_frontdoor_origin" "ukSouthServiceOrigin" {
 //  name                          = "ukSouthServiceOrigin"
@@ -71,13 +123,16 @@ resource "azurerm_cdn_frontdoor_origin" "westusServiceOrigin" {
 //  weight                         = 1000
 //  certificate_name_check_enabled = true
 //}
-*/
+
 
 
 resource "random_string" "random" {
   length = 6
   special = false
   upper = false
+}
+locals {
+ mySqlServerName = "mysqlserver${random_string.random.result}"
 }
 /*
 resource "azurerm_private_dns_zone" "dnsPrivateZone" {
@@ -96,13 +151,10 @@ resource "azurerm_container_group" "containerGroup" {
   name                = "containerGroup"
   location            = "westus"
   resource_group_name = "rg1"
-  ip_address_type     = "Public"
+  ip_address_type     = "Private"
   os_type             = "Linux"
-  dns_name_label = "wordpress1234"
-  /*
   subnet_ids = [azurerm_subnet.subnetContainer.id]
 
-*/
   container {
     name   = "wordpress"
     image  = "wordpress"
@@ -119,29 +171,30 @@ resource "azurerm_container_group" "containerGroup" {
       protocol = "TCP"
     }
 
-/*
+
     environment_variables = {
-      "WORDPRESS_DB_HOST" = azurerm_mysql_flexible_server.mySqlServer.name
+      "WORDPRESS_DB_HOST" = local.mySqlServerName
       "WORDPRESS_DB_USER" = "mysqladmin"
-      "WORDPRESS_DB_PASSWORD" = azurerm_key_vault_secret.vaultSecret.value
+      "WORDPRESS_DB_PASSWORD" = var.sqlPassword
       "WORDPRESS_DB_NAME" = "mysqldb"
     }
-*/
+
 
     volume {
       name = "wordpress"
-      storage_account_name = "wordpress897"
+      storage_account_name = azurerm_storage_account.storageAccount.name
       mount_path = "/var/www/html"
       share_name = "wordpress"
-      storage_account_key = "8SuabOe+qDTsgw4d9mb+vuFoKTKiNnP/m6bIaaIf0+M04Sh2J3DEO47wvnzxPGKi0pdRkkhJcB4T+AStMirCkg=="
-      /*
-      storage_account_key = azurerm_storage_account.storage892374234.primary_access_key
-      */
+      storage_account_key = azurerm_storage_account.storageAccount.primary_access_key
+
     }
   }
   
         depends_on = [
+          /*
     azurerm_virtual_network.wordpressVnet,
+    */
+    azurerm_storage_share_file.storageShareFile
   ]
 }
 
@@ -157,11 +210,11 @@ resource "azurerm_container_registry" "wordpressAcr" {
 
   name                     = "storage${random_string.random.result}"
 */
-/*
+
 resource "azurerm_storage_account" "storageAccount" {
-  name                     = "storage892374234"
-  resource_group_name      = azurerm_resource_group.resourceGroup.name
-  location                 = azurerm_resource_group.resourceGroup.location
+  name                     = "storage${random_string.random.result}"
+  resource_group_name      = "rg1"
+  location                 = "westus"
   account_tier             = "Standard"
   account_replication_type = "LRS"
 }
@@ -170,8 +223,23 @@ resource "azurerm_storage_share" "wordpress" {
   name                 = "wordpress"
   storage_account_name = azurerm_storage_account.storageAccount.name
   quota                = 500
+  depends_on = [ azurerm_storage_account.storageAccount ]
 }
-*/
+
+resource "azurerm_storage_share_file" "storageShareFile" {
+  name             = "wp-config-docker.php"
+  storage_share_id = azurerm_storage_share.wordpress.id
+  source           = "wp-config-docker.php"
+  depends_on = [ azurerm_storage_share.wordpress ]
+}
+
+resource "azurerm_storage_share_file" "storageShareFile2" {
+  name             = "wp-config-sample.php"
+  storage_share_id = azurerm_storage_share.wordpress.id
+  source           = "wp-config-sample.php"
+  depends_on = [ azurerm_storage_share.wordpress ]
+}
+
 /*
 //networking resources
 resource "azurerm_network_security_group" "containerSubnetNsg" {
@@ -196,6 +264,7 @@ resource "azurerm_subnet_network_security_group_association" "sqlNsgAssociation"
   network_security_group_id = azurerm_network_security_group.sqlSubnetNsg.id
 }
 */
+
 resource "azurerm_virtual_network" "wordpressVnet" {
   name                = "vnet"
   location            = "westus"
@@ -233,12 +302,11 @@ resource "azurerm_subnet" "sqlSubnet" {
   }
 }
 
-//Random generator for SQL and Keyvault names
 
 
 //SQL resources
 resource "azurerm_mysql_flexible_server" "mySqlServer" {
-  name                   = "mysqlserver${random_string.random.result}"
+  name                   = local.mySqlServerName
   resource_group_name    = "rg1"
   location               = "westus"
   administrator_login    = "mysqladmin"
@@ -250,7 +318,7 @@ resource "azurerm_mysql_flexible_server" "mySqlServer" {
 */
         depends_on = [
     azurerm_key_vault.keyVault,
-    var.sqlPassword,
+   // var.sqlPassword,
   ]
 }
 
