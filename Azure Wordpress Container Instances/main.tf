@@ -345,6 +345,21 @@ resource "azurerm_mysql_flexible_server_firewall_rule" "mysqlFirewallRule" {
   ]
 }
 */
+/*
+resource "azurerm_redis_cache" "redisCacheMysql" {
+  name                = "redisCacheMysql"
+  location            = "westus"
+  resource_group_name = "rg1"
+  capacity            = 2
+  family              = "C"
+  sku_name            = "Standard"
+  enable_non_ssl_port = false
+  minimum_tls_version = "1.2"
+
+  redis_configuration {
+  }
+}
+*/
 
 //keyvautl resources
 data "azurerm_client_config" "current" {}
