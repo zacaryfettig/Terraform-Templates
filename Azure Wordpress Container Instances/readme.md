@@ -2,7 +2,9 @@
 Template objective is hosting a .net web app with SQL database while maintaining connection security from the SQL Database to the web app.
 
 ## Resources created in Template
-* App Service: Hosting Web App using App Service
+* Application Gateway: Layer 7 load balancer with WAF. Privatly connects Azure Container Instances to the internet.
+
+* Container Instances: Hosting Wordpress on a container using the Wordpress Docker Image.
 
 * Azure SQL Database Server: Creation of Azure Databases server resource
 
