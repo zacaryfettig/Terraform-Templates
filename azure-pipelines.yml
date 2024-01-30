@@ -1,0 +1,21 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  - task: AzureCLI@2
+  inputs:
+    azureSubscription: # string. Alias: connectedServiceNameARM. Required. Azure Resource Manager connection. 
+    scriptType: # 'ps' | 'pscore' | 'batch' | 'bash'. Required. Script Type. 
+    scriptLocation: 'scriptPath' # 'inlineScript' | 'scriptPath'. Required. Script Location. Default: scriptPath.
+    scriptPath: # string. Required when scriptLocation = scriptPath. Script Path. 
+     #inlineScript: # string. Required when scriptLocation = inlineScript. Inline Script
