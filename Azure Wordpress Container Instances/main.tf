@@ -1,3 +1,12 @@
+variable "AZPMap" {
+  type = map(string)
+  default = {
+   AZP_URL = "https://dev.azure.com/<devops_organization_name>",
+   AZP_TOKEN = "<DevopsToken>",
+   AZP_POOL = "linux-container-instances"
+  }
+}
+
 //creating Resource Group
 resource "azurerm_resource_group" "resourceGroup" {
   name     = var.resourceGroupName
@@ -10,6 +19,7 @@ resource "random_string" "random" {
   upper = false
 }
 
+//public ip for App Gateway
 resource "azurerm_public_ip" "appGatewayPublicIP" {
   name                = "appGatewayPublicIP"
   resource_group_name = azurerm_resource_group.resourceGroup.name
@@ -18,6 +28,7 @@ resource "azurerm_public_ip" "appGatewayPublicIP" {
   sku = "Standard"
 }
 
+//Application Gateway Resource
 resource "azurerm_application_gateway" "appGateway" {
   name                = "appGateway"
   resource_group_name = azurerm_resource_group.resourceGroup.name
@@ -87,32 +98,22 @@ locals {
  mySqlServerName = "mysqlserver${random_string.random.result}"
 }
 
-
+//file.core.windows.net DNS Zone
 resource "azurerm_private_dns_zone" "fileDnsPrivateZone" {
   name                = "file.core.windows.net"
   resource_group_name = azurerm_resource_group.resourceGroup.name
 }
 
-resource "azurerm_private_dns_zone" "fileDnsPrivateZone" {
-  name                = "blob.core.windows.net"
-  resource_group_name = azurerm_resource_group.resourceGroup.name
-}
-
+//Link to File DNS Zone
 resource "azurerm_private_dns_zone_virtual_network_link" "fileDnsZoneLink" {
-  name = "filedDnszonelink"
+  name = "fileDnszonelink"
   resource_group_name = azurerm_resource_group.resourceGroup.name
   virtual_network_id = azurerm_virtual_network.wordpressVnet.id
   private_dns_zone_name = azurerm_private_dns_zone.fileDnsPrivateZone.name
 }
 
-resource "azurerm_private_dns_zone_virtual_network_link" "fileDnsZoneLink" {
-  name = "blobDnszonelink"
-  resource_group_name = azurerm_resource_group.resourceGroup.name
-  virtual_network_id = azurerm_virtual_network.wordpressVnet.id
-  private_dns_zone_name = azurerm_private_dns_zone.blobDnsPrivateZone.name
-}
-
-resource "azurerm_private_dns_a_record" "storageDNS" {
+//A Record for Storage Account
+resource "azurerm_private_dns_a_record" "filestorageDNS" {
   name                = azurerm_storage_account.storageAccount.name
   zone_name           = azurerm_private_dns_zone.fileDnsPrivateZone.name
   resource_group_name = azurerm_resource_group.resourceGroup.name
@@ -121,21 +122,38 @@ resource "azurerm_private_dns_a_record" "storageDNS" {
   depends_on = [ azurerm_private_endpoint.storageAccountEndpoint ]
 }
 
-resource "azurerm_private_dns_a_record" "storageDNS" {
-  name                = azurerm_storage_account.storageAccount.name
-  zone_name           = azurerm_private_dns_zone.blobDnsPrivateZone.name
+//redis.cache.windows.net DNS Zone
+resource "azurerm_private_dns_zone" "redisDnsPrivateZone" {
+  name                = "redis.cache.windows.net"
   resource_group_name = azurerm_resource_group.resourceGroup.name
-  ttl                 = 300
-  records             = ["10.0.5.10"]
-  depends_on = [ azurerm_private_endpoint.storageAccountEndpoint ]
 }
 
+//Link to File DNS Zone
+resource "azurerm_private_dns_zone_virtual_network_link" "redisDnsZoneLink" {
+  name = "redisDnszonelink"
+  resource_group_name = azurerm_resource_group.resourceGroup.name
+  virtual_network_id = azurerm_virtual_network.wordpressVnet.id
+  private_dns_zone_name = azurerm_private_dns_zone.redisDnsPrivateZone.name
+}
+
+//A Record for Storage Account
+resource "azurerm_private_dns_a_record" "redisDNSRecord" {
+  name                = azurerm_storage_account.storageAccount.name
+  zone_name           = azurerm_private_dns_zone.redisDnsPrivateZone.name
+  resource_group_name = azurerm_resource_group.resourceGroup.name
+  ttl                 = 300
+  records             = ["10.0.4.5"]
+  depends_on = [ azurerm_redis_cache.redisCacheMysql ]
+}
+
+//Azure Container Group for Wordpress
 resource "azurerm_container_group" "containerGroup" {
-  name                = "containerGroup"
+  name                = "wordpressContainerGroup"
   location            = azurerm_resource_group.resourceGroup.location
   resource_group_name = azurerm_resource_group.resourceGroup.name
   ip_address_type     = "Private"
   os_type             = "Linux"
+  subnet_ids = [azurerm_subnet.subnetContainer.id]
 
   diagnostics {
     log_analytics {
@@ -143,8 +161,6 @@ resource "azurerm_container_group" "containerGroup" {
       workspace_key = azurerm_log_analytics_workspace.logAnalytics.primary_shared_key
     }
   }
-
-  subnet_ids = [azurerm_subnet.subnetContainer.id]
 
   container {
     name   = "wordpress"
@@ -157,7 +173,7 @@ resource "azurerm_container_group" "containerGroup" {
       protocol = "TCP"
     }
 
-            ports {
+       ports {
       port     = 443
       protocol = "TCP"
     }
@@ -168,16 +184,19 @@ resource "azurerm_container_group" "containerGroup" {
       mount_path = "/var/www/html"
       share_name = "wordpress"
       storage_account_key = azurerm_storage_account.storageAccount.primary_access_key
+      read_only = false
     }
   }
   
         depends_on = [
     azurerm_storage_share.storageShareFile,
     azurerm_private_endpoint.storageAccountEndpoint,
-    azurerm_log_analytics_workspace.logAnalytics
+    azurerm_log_analytics_workspace.logAnalytics,
+    azurerm_subnet.subnetContainer
   ]
 }
 
+//Storage account for storing data
 resource "azurerm_storage_account" "storageAccount" {
   name                     = "storage${random_string.random.result}"
   resource_group_name      = azurerm_resource_group.resourceGroup.name
@@ -208,14 +227,14 @@ resource "azurerm_private_endpoint" "storageAccountEndpoint" {
   depends_on = [ azurerm_storage_share.storageShareFile ]
 }
 
+
 resource "azurerm_storage_account_network_rules" "storageNetworkRule" {
   storage_account_id = azurerm_storage_account.storageAccount.id
   default_action             = "Deny"
   depends_on = [ azurerm_redis_cache.redisCacheMysql,
   azurerm_storage_share.storageShareFile,
-  null_resource.parameterChange,
-  null_resource.storageUploadConfig
-  //null_resource.storageUpload
+  null_resource.push,
+  azurerm_container_group.devopsAgentcontainerGroup
   ]
 }
 
@@ -228,21 +247,16 @@ resource "azurerm_storage_share" "storageShareFile" {
   depends_on = [ azurerm_storage_account.storageAccount ]
 }
 
-resource "azurerm_storage_container" "acrBlobContainer" {
-  name                  = "acrBlobContainer"
-  storage_account_name  = azurerm_storage_account.storageAccount.name
-  container_access_type = "private"
-  depends_on = [ azurerm_storage_account.storageAccount ]
-}
-
-
 //networking resources
 
 resource "azurerm_network_security_group" "containerSubnetNsg" {
   name                = "containerSubnetNsg"
   location            = azurerm_resource_group.resourceGroup.location
   resource_group_name = azurerm_resource_group.resourceGroup.name
-  depends_on = [ azurerm_subnet.subnetContainer ]
+  depends_on = [ azurerm_subnet.subnetContainer,
+  azurerm_container_group.containerGroup,
+ azurerm_container_group.devopsAgentcontainerGroup 
+ ]
   security_rule {
     name                       = "MySQLInbound"
     priority                   = 102
@@ -544,7 +558,6 @@ resource "azurerm_subnet" "devopsAgentSubnet" {
 }
 
 
-
 //SQL resources
 resource "azurerm_mysql_flexible_server" "mySqlServer" {
   name                   = local.mySqlServerName
@@ -599,7 +612,6 @@ locals {
   storageDestination = "https://${azurerm_storage_account.storageAccount.name}.file.core.windows.net/wordpress"
 }
 
-
 resource "null_resource" "storageUpload" {
   provisioner "local-exec" {
 command = "az storage file upload-batch --destination ${local.storageDestination} --destination-path /wp-content/plugins --source ./redisCachePlugin --account-name ${azurerm_storage_account.storageAccount.name} --account-key ${azurerm_storage_account.storageAccount.primary_access_key}"
@@ -622,11 +634,16 @@ command = "az storage file upload --source ./wp-config.php --account-name ${azur
   depends_on = [ null_resource.storageDeleteConfig ]
 }
 
+
 resource "azurerm_private_endpoint" "redisEndpoint" {
   name                = "redisEndpoint"
   location            = azurerm_resource_group.resourceGroup.location
   resource_group_name = azurerm_resource_group.resourceGroup.name
   subnet_id           = azurerm_subnet.redisCacheSubnet.id
+  ip_configuration {
+    name = "redisIP"
+    private_ip_address = "10.0.4.5"
+  }
 
   private_service_connection {
     name                           = "redisPrivateServiceConnection"
@@ -682,7 +699,7 @@ resource "azurerm_key_vault_secret" "storageAccessKey" {
   key_vault_id = azurerm_key_vault.keyVault.id
   depends_on = [
     azurerm_key_vault.keyVault,
-  var.sqlPassword
+  azurerm_storage_account.storageAccount
   ]
 }
 
@@ -692,10 +709,69 @@ resource "azurerm_key_vault_secret" "storageAccountName" {
   key_vault_id = azurerm_key_vault.keyVault.id
   depends_on = [
     azurerm_key_vault.keyVault,
-  var.sqlPassword
+  azurerm_storage_account.storageAccount
   ]
 }
 
+resource "azurerm_key_vault_secret" "dbname" {
+  name         = "dbname"
+  value        = azurerm_mysql_flexible_database.mySqlDB.name
+  key_vault_id = azurerm_key_vault.keyVault.id
+  depends_on = [
+    azurerm_key_vault.keyVault,
+    azurerm_mysql_flexible_database.mySqlDB
+  ]
+}
+
+resource "azurerm_key_vault_secret" "dbuser" {
+  name         = "dbuser"
+  value        = azurerm_mysql_flexible_server.mySqlServer.administrator_login
+  key_vault_id = azurerm_key_vault.keyVault.id
+  depends_on = [
+    azurerm_key_vault.keyVault,
+    azurerm_mysql_flexible_database.mySqlDB
+  ]
+}
+
+resource "azurerm_key_vault_secret" "dbpassword" {
+  name         = "dbpassword"
+  value        = var.sqlPassword
+  key_vault_id = azurerm_key_vault.keyVault.id
+  depends_on = [
+    azurerm_key_vault.keyVault,
+    azurerm_mysql_flexible_database.mySqlDB
+  ]
+}
+
+resource "azurerm_key_vault_secret" "dbhost" {
+  name         = "dbhost"
+  value        = azurerm_mysql_flexible_server.mySqlServer.name
+  key_vault_id = azurerm_key_vault.keyVault.id
+  depends_on = [
+    azurerm_key_vault.keyVault,
+    azurerm_mysql_flexible_database.mySqlDB
+  ]
+}
+
+resource "azurerm_key_vault_secret" "redishost" {
+  name         = "redishost"
+  value        = "10.0.4.5"
+  key_vault_id = azurerm_key_vault.keyVault.id
+  depends_on = [
+    azurerm_key_vault.keyVault,
+    azurerm_redis_cache.redisCacheMysql
+  ]
+}
+
+resource "azurerm_key_vault_secret" "redispassword" {
+  name         = "redispassword"
+  value        = azurerm_redis_cache.redisCacheMysql.primary_access_key
+  key_vault_id = azurerm_key_vault.keyVault.id
+  depends_on = [
+    azurerm_key_vault.keyVault,
+    azurerm_redis_cache.redisCacheMysql
+  ]
+}
 
 resource "azurerm_log_analytics_workspace" "logAnalytics" {
   name                = "logAnalytics"
@@ -706,11 +782,11 @@ resource "azurerm_log_analytics_workspace" "logAnalytics" {
 }
 
 resource "azurerm_container_registry" "containerAcrWordpress" {
-  name                = "Acr-${random_string.random.result}"
+  name                = "acr${random_string.random.result}"
   resource_group_name = azurerm_resource_group.resourceGroup.name
   location            = azurerm_resource_group.resourceGroup.location
   sku                 = "Standard"
-  admin_enabled       = yes
+  admin_enabled       = true
 }
 
 resource "azurerm_public_ip" "devopsAgentPublicIP" {
@@ -718,6 +794,7 @@ resource "azurerm_public_ip" "devopsAgentPublicIP" {
   location            = azurerm_resource_group.resourceGroup.location
   resource_group_name = azurerm_resource_group.resourceGroup.name
   allocation_method   = "Static"
+  sku = "Standard"
 }
 
 resource "azurerm_nat_gateway" "devopsAgentNatGateway" {
@@ -726,7 +803,6 @@ resource "azurerm_nat_gateway" "devopsAgentNatGateway" {
   resource_group_name     = azurerm_resource_group.resourceGroup.name
   sku_name                = "Standard"
   idle_timeout_in_minutes = 10
-  zones                   = ["1"]
   depends_on = [ azurerm_subnet.devopsAgentSubnet ]
 }
 
@@ -734,27 +810,28 @@ resource "azurerm_nat_gateway_public_ip_association" "devopsAgentPublicIPAssocia
   nat_gateway_id       = azurerm_nat_gateway.devopsAgentNatGateway.id
   public_ip_address_id = azurerm_public_ip.devopsAgentPublicIP.id
   depends_on = [ azurerm_nat_gateway.devopsAgentNatGateway,
-  azurerm_public_ip.devopsAgentPublicIP ]
+  azurerm_public_ip.devopsAgentPublicIP,
+  azurerm_nat_gateway.devopsAgentNatGateway ]
 }
 
-resource "azurerm_subnet_nat_gateway_association" "example" {
+resource "azurerm_subnet_nat_gateway_association" "gatewayAssociation" {
   subnet_id      = azurerm_subnet.devopsAgentSubnet.id
   nat_gateway_id = azurerm_nat_gateway.devopsAgentNatGateway.id
   depends_on = [ azurerm_nat_gateway.devopsAgentNatGateway ]
-}
+} 
+
 
 resource "azurerm_container_group" "devopsAgentcontainerGroup" {
-  name                = "devopsAgentcontainerGroup"
+  name                = "devopsagentcontainergroup"
   location            = azurerm_resource_group.resourceGroup.location
   resource_group_name = azurerm_resource_group.resourceGroup.name
   ip_address_type     = "Private"
   os_type             = "Linux"
-
   subnet_ids = [azurerm_subnet.devopsAgentSubnet.id]
 
   container {
-    name   = "Agent"
-    image  = "${azurerm_container_registry.containerAcrWordpress.name}.azurecr.io/agent-container:v2"
+    name   = "agent"
+    image  = "${azurerm_container_registry.containerAcrWordpress.name}.azurecr.io/agentpool:v1"
     cpu    = "0.5"
     memory = "0.5"
 
@@ -767,25 +844,43 @@ resource "azurerm_container_group" "devopsAgentcontainerGroup" {
       port     = 443
       protocol = "TCP"
     }
+
+    environment_variables = var.AZPMap
+ 
   }
   image_registry_credential {
-    server = azurerm_container_registry.name
+    server = "${azurerm_container_registry.containerAcrWordpress.name}.azurecr.io"
     username = azurerm_container_registry.containerAcrWordpress.admin_username
     password = azurerm_container_registry.containerAcrWordpress.admin_password
   }
+  depends_on = [ null_resource.push ]
 }
 
-resource "azurerm_container_registry_task" "registryTask" {
-  name                  = "example-task"
-  container_registry_id = azurerm_container_registry.containerAcrWordpress.id
-  platform {
-    os = "Linux"
+resource "null_resource" "pull1" {
+  provisioner "local-exec" {
+command = "docker pull zacaryfettig/azure-devops-agent:azp-agent"
   }
-  docker_step {
-    dockerfile_path      = "Dockerfile"
-    context_path         = "https://${azurerm_storage_account.storageAccount.name}.blob.core.windows.net/acrBlobContainer"
-    context_access_token = azurerm_storage_account.storageAccount.primary_access_key
-    image_names          = ["${azurerm_container_registry.containerAcrWordpress.name}.azurecr.io/agent-container:v3"]
-    push_enabled = yes
+  depends_on = [ azurerm_container_group.containerGroup,
+  azurerm_container_registry.containerAcrWordpress ]
+}
+
+resource "null_resource" "tag1" {
+  provisioner "local-exec" {
+command = "docker image tag zacaryfettig/azure-devops-agent:azp-agent ${azurerm_container_registry.containerAcrWordpress.name}.azurecr.io/agentpool:v1"
   }
+  depends_on = [ null_resource.pull1 ]
+}
+
+resource "null_resource" "acrLogin1" {
+  provisioner "local-exec" {
+command = "az acr login --name ${azurerm_container_registry.containerAcrWordpress.name}"
+  }
+  depends_on = [ null_resource.tag1 ]
+}
+
+resource "null_resource" "push" {
+  provisioner "local-exec" {
+command = "docker push ${azurerm_container_registry.containerAcrWordpress.name}.azurecr.io/agentpool:v1"
+  }
+  depends_on = [ null_resource.acrLogin1 ]
 }
