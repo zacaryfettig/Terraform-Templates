@@ -1,0 +1,119 @@
+image:
+    name: hashicorp/terraform
+#    name: registry.gitlab.com/gitlab-org/gitlab-build-images:terraform
+    entrypoint: #[""]
+        - '/usr/bin/env'
+        - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin:/bin'
+
+variables:
+    #AWS
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: "us-west-2"
+    #Terraform
+    PROJECT_ID: "60744020"
+    TF_USERNAME: "zacaryfettig"
+    TF_PASSWORD: "glpat-2FbJtucys-FiinBq7zCa"
+    TF_ADDRESS: "https://gitlab.com/api/v4/projects/${PROJECT_ID}/terraform/state/tfstate"
+    #Deploy & Test Docker Application
+    DOCKER_REGISTRY: ${AWS_ACCOUNT_ID}.dkr.ecr.us-west-2.amazonaws.com/messagingappregistry
+    APP_NAME_APPLICATION: messageapp
+    APP_NAME_PSQL: psql
+    DOCKER_HOST: tcp://docker:2375
+
+before_script:
+    - terraform --version
+    - terraform init 
+        -backend-config=address=${TF_ADDRESS}
+        -backend-config=lock_address=${TF_ADDRESS}/lock
+        -backend-config=unlock_address=${TF_ADDRESS}/lock
+        -backend-config=username=${TF_USERNAME}
+        -backend-config=password=${TF_PASSWORD}
+        -backend-config=lock_method=POST
+        -backend-config=unlock_method=DELETE
+        -backend-config=retry_wait_min=5
+
+stages:
+    - tfTest
+    - init
+    - plan
+    - apply1
+    - buildDocker
+    - apply2
+    - destroy
+
+tfTest:
+    stage: tfTest
+    script:
+        - terraform validate
+
+plan:
+    stage: plan
+    script:
+        - terraform plan -out="tfPlan"
+    artifacts:
+        paths:
+            - "tfPlan"
+    when: manual
+
+applyregistry:
+    stage: apply1
+    dependencies:
+        - plan
+    script:
+        - terraform apply -target=aws_ecr_repository.messageapp -target=aws_ecr_repository.psql -input=false -auto-approve
+    when: manual
+
+deployToRegistry1:
+    stage: buildDocker
+    image:
+        name: amazon/aws-cli
+        entrypoint: [""]
+    services:
+        - docker:dind
+    before_script:
+        - amazon-linux-extras install docker
+        - aws --version
+        - docker --version
+    script:
+        - ls .
+        - docker build -t $DOCKER_REGISTRY/$APP_NAME_APPLICATION:latest -f application.dockerfile .
+        - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin $DOCKER_REGISTRY
+        - docker push $DOCKER_REGISTRY/$APP_NAME_APPLICATION:latest  
+    when: manual 
+        
+deployToRegistry2:
+    stage: buildDocker
+    image:
+        name: amazon/aws-cli
+        entrypoint: [""]
+    services:
+        - docker:dind
+    before_script:
+        - amazon-linux-extras install docker
+        - aws --version
+        - docker --version
+    script:
+        - ls .
+        - docker build -t $DOCKER_REGISTRY/$APP_NAME_PSQL:latest -f ./psql/psql.dockerfile .
+        - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin $DOCKER_REGISTRY
+        - docker push $DOCKER_REGISTRY/$APP_NAME_PSQL:latest
+    when: manual
+
+applyterraform:
+    stage: apply2
+    dependencies:
+        - plan
+    script:
+#        - terraform import aws_ecr_repository.messageapp messagingappregistry/messageapp
+#        - terraform import aws_ecr_repository.psql messagingappregistry/psql
+        - terraform apply -input=false -auto-approve
+    when: manual
+
+
+destroy:
+    stage: destroy
+    script:
+        - terraform destroy --auto-approve
+    when: manual
+
